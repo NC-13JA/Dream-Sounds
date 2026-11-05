@@ -12,7 +12,6 @@ import android.widget.*
 import androidx.core.content.ContextCompat
 import org.json.JSONObject
 import java.util.Calendar
-import kotlin.math.*
 
 class MainActivity : Activity() {
     private val prefs by lazy { getSharedPreferences("dream_sounds", MODE_PRIVATE) }
@@ -138,8 +137,9 @@ class MainActivity : Activity() {
         return box.apply { layoutParams=LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=7 } }
     }
 
-    private fun rounded(color:Int,radius:Float)=GradientDrawable().apply {
-        setColor(color); cornerRadius=radius*resources.displayMetrics.density
+    private fun rounded(color:Int,radius:Int)=GradientDrawable().apply {
+        setColor(color)
+        cornerRadius=radius.toFloat()*resources.displayMetrics.density
         setStroke((1*resources.displayMetrics.density).toInt(),0xFF293B68.toInt())
     }
     private fun sectionTitle(s:String)=TextView(this).apply {
