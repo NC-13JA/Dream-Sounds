@@ -15,16 +15,20 @@ import java.util.Calendar
 
 class MainActivity : Activity() {
     private val prefs by lazy { getSharedPreferences("dream_sounds", MODE_PRIVATE) }
-    private val soundNames = listOf("birds", "river", "wind", "ocean")
+    private val soundNames = listOf("birds", "river", "wind", "ocean", "crickets", "rain")
     private val labels = mapOf(
         "birds" to "طيور الحديقة 🐦",
         "river" to "النهر والضفادع 🐸",
         "wind" to "رياح الحقول 🍃",
-        "ocean" to "أمواج الشاطئ 🌊"
+        "ocean" to "أمواج الشاطئ 🌊",
+        "crickets" to "صراصير الليل 🦗",
+        "rain" to "مطر هادئ 🌧️"
     )
     private val groups = linkedMapOf(
         "🌿 تسجيلات الطبيعة الحقيقية" to listOf("birds", "river", "wind"),
-        "🌊 البحر" to listOf("ocean")
+        "🌊 البحر" to listOf("ocean"),
+        "🌙 أصوات الليل" to listOf("crickets"),
+        "🌧️ المطر" to listOf("rain")
     )
     private val active = mutableMapOf<String, Boolean>()
     private val volumes = mutableMapOf<String, Float>()
@@ -51,7 +55,7 @@ class MainActivity : Activity() {
             setPadding(0,2,0,10)
         })
         status = TextView(this).apply {
-            text=active.values.count { it }.let { if(it==0) "4 تسجيلات طبيعية حقيقية" else "يعمل الآن $it أصوات" }
+            text=active.values.count { it }.let { if(it==0) "6 تسجيلات طبيعية حقيقية" else "يعمل الآن $it أصوات" }
             textSize=14f; setTextColor(accent); gravity=Gravity.CENTER
             background=rounded(0xFF17264A.toInt(),18); setPadding(12,12,12,12)
         }
