@@ -22,7 +22,9 @@ class SoundService : Service() {
         "birds" to "https://opengameart.org/sites/default/files/park_ambience_birds.wav",
         "river" to "https://opengameart.org/sites/default/files/park_ambience_river.wav",
         "wind" to "https://opengameart.org/sites/default/files/park_ambience_wind.wav",
-        "ocean" to "https://opengameart.org/sites/default/files/wave_01_cc0-18363__jasinski__alkaibeach.flac"
+        "ocean" to "https://opengameart.org/sites/default/files/wave_01_cc0-18363__jasinski__alkaibeach.flac",
+        "crickets" to "https://opengameart.org/sites/default/files/cricketsounds090613.mp3",
+        "rain" to "https://opengameart.org/sites/default/files/Rain%20MP3.zip"
     )
 
     override fun onCreate() {
@@ -60,9 +62,10 @@ class SoundService : Service() {
             return
         }
         if (pending[name] != true) return
+        updateNotification("يتم تجهيز التسجيل الصوتي...")
         executor.execute {
             try {
-                val extension = if (name == "ocean") "flac" else "wav"
+                val extension = when (name) { "ocean" -> "flac"; "crickets", "rain" -> "mp3"; else -> "wav" }
                 val file = File(filesDir, "$name.$extension")
                 if (!file.exists() || file.length() < 1024L) download(urls.getValue(name), file)
                 handler.post {
@@ -103,10 +106,10 @@ class SoundService : Service() {
     }
 
     private fun download(link: String, destination: File) {
-        val temp = File(filesDir, destination.name + ".part")
+        val temp = File(filesDir, destination.name + ".download")
         val connection = URL(link).openConnection() as HttpURLConnection
         connection.connectTimeout = 25000
-        connection.readTimeout = 120000
+        connection.readTimeout = 180000
         connection.instanceFollowRedirects = true
         try {
             connection.connect()
@@ -114,9 +117,21 @@ class SoundService : Service() {
             connection.inputStream.use { input ->
                 temp.outputStream().use { output -> input.copyTo(output) }
             }
-            if (temp.length() < 1024L) throw Exception("Invalid audio")
-            if (destination.exists()) destination.delete()
-            if (!temp.renameTo(destination)) throw Exception("Cannot save audio")
+            if (temp.length() < 1024L) throw Exception("Invalid download")
+            if (link.lowercase().endsWith(".zip")) {
+                java.util.zip.ZipInputStream(temp.inputStream()).use { zip ->
+                    var entry = zip.nextEntry
+                    while (entry != null && (entry.isDirectory || !entry.name.lowercase().endsWith(".mp3"))) {
+                        entry = zip.nextEntry
+                    }
+                    if (entry == null) throw Exception("No MP3 in archive")
+                    destination.outputStream().use { output -> zip.copyTo(output) }
+                }
+            } else {
+                if (destination.exists()) destination.delete()
+                if (!temp.renameTo(destination)) throw Exception("Cannot save audio")
+            }
+            if (!destination.exists() || destination.length() < 1024L) throw Exception("Audio extraction failed")
         } finally {
             connection.disconnect()
             if (temp.exists()) temp.delete()
