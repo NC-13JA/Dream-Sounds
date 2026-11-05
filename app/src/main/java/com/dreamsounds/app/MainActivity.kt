@@ -15,14 +15,16 @@ import java.util.Calendar
 
 class MainActivity : Activity() {
     private val prefs by lazy { getSharedPreferences("dream_sounds", MODE_PRIVATE) }
-    private val soundNames = listOf("birds", "river", "wind")
+    private val soundNames = listOf("birds", "river", "wind", "ocean")
     private val labels = mapOf(
         "birds" to "طيور الحديقة 🐦",
         "river" to "النهر والضفادع 🐸",
-        "wind" to "رياح الحقول 🍃"
+        "wind" to "رياح الحقول 🍃",
+        "ocean" to "أمواج الشاطئ 🌊"
     )
     private val groups = linkedMapOf(
-        "🌿 تسجيلات الطبيعة الحقيقية" to listOf("birds", "river", "wind")
+        "🌿 تسجيلات الطبيعة الحقيقية" to listOf("birds", "river", "wind"),
+        "🌊 البحر" to listOf("ocean")
     )
     private val active = mutableMapOf<String, Boolean>()
     private val volumes = mutableMapOf<String, Float>()
@@ -49,7 +51,7 @@ class MainActivity : Activity() {
             setPadding(0,2,0,10)
         })
         status = TextView(this).apply {
-            text=active.values.count { it }.let { if(it==0) "3 تسجيلات طبيعية حقيقية" else "يعمل الآن $it أصوات" }
+            text=active.values.count { it }.let { if(it==0) "4 تسجيلات طبيعية حقيقية" else "يعمل الآن $it أصوات" }
             textSize=14f; setTextColor(accent); gravity=Gravity.CENTER
             background=rounded(0xFF17264A.toInt(),18); setPadding(12,12,12,12)
         }
