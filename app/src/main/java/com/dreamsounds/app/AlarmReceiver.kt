@@ -9,7 +9,7 @@ class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         val service = Intent(context, SoundService::class.java).apply {
             action = "PLAY"
-            putExtra("name", "rain")
+            putExtra("name", "birds")
             putExtra("enabled", true)
             putExtra("volume", 0.45f)
         }
