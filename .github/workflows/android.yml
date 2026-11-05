@@ -23,10 +23,44 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+      - name: Generate offline ambience WAV files
+        run: |
+          python3 - <<'PY'
+          import math, os, random, struct, wave
+          root = "app/src/main/assets/sounds"
+          os.makedirs(root, exist_ok=True)
+          names = ["rain", "campfire", "birds", "wind", "ocean", "white_noise"]
+          rate, seconds = 22050, 10
+          for idx, name in enumerate(names):
+              path = os.path.join(root, name + ".wav")
+              random.seed(1234567 + idx * 7919)
+              previous = 0.0
+              with wave.open(path, "wb") as out:
+                  out.setnchannels(1)
+                  out.setsampwidth(2)
+                  out.setframerate(rate)
+                  frames = bytearray()
+                  for i in range(rate * seconds):
+                      t = i / rate
+                      noise = random.uniform(-1.0, 1.0)
+                      if idx == 0:
+                          shaped = noise * 0.22 + previous * 0.45
+                      elif idx == 1:
+                          shaped = noise * (0.10 + 0.12 * abs(math.sin(t * 1.7)))
+                      elif idx == 2:
+                          shaped = math.sin(t * 900) * 0.12 if i % (rate * 2) < 1800 else noise * 0.015
+                      elif idx == 3:
+                          shaped = noise * (0.10 + 0.08 * math.sin(t * 0.25))
+                      elif idx == 4:
+                          shaped = noise * (0.08 + 0.12 * (0.5 + 0.5 * math.sin(t * 0.6))) + math.sin(t * 0.4) * 0.04
+                      else:
+                          shaped = noise * 0.16
+                      previous = shaped
+                      fade = min(1.0, (i + 1) / 500.0, (rate * seconds - i) / 500.0)
+                      sample = max(-32768, min(32767, int(shaped * fade * 12000)))
+                      frames += struct.pack("<h", sample)
+                  out.writeframes(frames)
+          PY
       - name: Build debug APK
         run: gradle --no-daemon assembleDebug
       - name: Upload APK
