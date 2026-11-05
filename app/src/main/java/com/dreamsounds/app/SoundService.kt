@@ -1,116 +1,205 @@
 package com.dreamsounds.app
 
 import android.app.*
-import android.content.*
+import android.content.Intent
 import android.media.AudioAttributes
-import android.media.SoundPool
+import android.media.MediaPlayer
 import android.os.*
 import androidx.core.app.NotificationCompat
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.concurrent.Executors
 
 class SoundService : Service() {
-    private lateinit var pool: SoundPool
-    private val ids=mutableMapOf<String,Int>()
-    private val streams=mutableMapOf<String,Int>()
-    private val volumes=mutableMapOf<String,Float>()
-    private val pending=mutableMapOf<String,Boolean>()
-    private var timer:Handler?=null
-    private var timerRunnable:Runnable?=null
-    private val names=listOf(
-        "rain","heavy_rain","thunder","campfire","birds","crickets","owl","forest",
-        "wind","leaves","ocean","river","waterfall","underwater",
-        "white_noise","pink_noise","brown_noise","fan","air_conditioner",
-        "train","airplane","cafe","heartbeat","singing_bowl"
+    private val players = mutableMapOf<String, MediaPlayer>()
+    private val volumes = mutableMapOf<String, Float>()
+    private val pending = mutableMapOf<String, Boolean>()
+    private val executor = Executors.newFixedThreadPool(3)
+    private val handler = Handler(Looper.getMainLooper())
+    private var timerRunnable: Runnable? = null
+    private val urls = mapOf(
+        "birds" to "https://opengameart.org/sites/default/files/park_ambience_birds.wav",
+        "river" to "https://opengameart.org/sites/default/files/park_ambience_river.wav",
+        "wind" to "https://opengameart.org/sites/default/files/park_ambience_wind.wav"
     )
 
     override fun onCreate() {
         super.onCreate()
-        val attrs=AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build()
-        pool=SoundPool.Builder().setMaxStreams(24).setAudioAttributes(attrs).build()
-        pool.setOnLoadCompleteListener { _,sampleId,status ->
-            if(status==0) {
-                val name=ids.entries.firstOrNull { it.value==sampleId }?.key
-                if(name!=null && pending[name]==true) playLoaded(name)
-            }
-        }
-        names.forEach { name ->
-            assets.openFd("sounds/$name.wav").use { afd -> ids[name]=pool.load(afd,1) }
-            volumes[name]=0.65f; pending[name]=false
-        }
         createChannel()
-        startForeground(41,notification("جاهز لتشغيل 24 صوتاً"))
+        startForeground(41, notification("جاهز — تسجيلات أصلية"))
     }
-    override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int {
-        when(intent?.action) {
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
             "PLAY" -> {
-                val name=intent.getStringExtra("name") ?: return START_STICKY
-                if(name !in names) return START_STICKY
-                val enabled=intent.getBooleanExtra("enabled",true)
-                volumes[name]=intent.getFloatExtra("volume",volumes[name]?:0.65f).coerceIn(0f,1f)
-                pending[name]=enabled
-                if(enabled) playLoaded(name) else stop(name)
+                val name = intent.getStringExtra("name") ?: return START_STICKY
+                if (name !in urls) return START_STICKY
+                val enabled = intent.getBooleanExtra("enabled", true)
+                val volume = intent.getFloatExtra("volume", volumes[name] ?: 0.65f).coerceIn(0f, 1f)
+                volumes[name] = volume
+                pending[name] = enabled
+                if (enabled) startTrack(name) else stopTrack(name)
                 updateNotification()
             }
-            "ALL_OFF" -> { names.forEach { pending[it]=false; stop(it) }; updateNotification() }
-            "SET_TIMER" -> {
-                val minutes=intent.getIntExtra("minutes",0)
-                timer?.removeCallbacks(timerRunnable?:Runnable {})
-                if(minutes>0) {
-                    timer=Handler(Looper.getMainLooper())
-                    val start=System.currentTimeMillis()
-                    timerRunnable=object:Runnable {
-                        override fun run() {
-                            val left=minutes*60_000L-(System.currentTimeMillis()-start)
-                            if(left<=0) { fadeOutAndStop(); return }
-                            if(left<30_000L) {
-                                val factor=(left/30_000f).coerceIn(0f,1f)
-                                streams.forEach { (key,stream) -> val v=(volumes[key]?:0.6f)*factor; pool.setVolume(stream,v,v) }
-                            }
-                            timer?.postDelayed(this,1000)
-                        }
-                    }
-                    timer?.post(timerRunnable!!)
-                }
+            "ALL_OFF" -> {
+                urls.keys.forEach { pending[it] = false; stopTrack(it) }
+                updateNotification()
             }
-            "STOP_TIMER" -> timer?.removeCallbacks(timerRunnable?:Runnable {})
+            "SET_TIMER" -> setTimer(intent.getIntExtra("minutes", 0))
+            "STOP_TIMER" -> stopTimer()
         }
         return START_STICKY
     }
-    private fun playLoaded(name:String) {
-        if(streams.containsKey(name)) {
-            val stream=streams[name]!!
-            val v=volumes[name]?:0.65f; pool.setVolume(stream,v,v)
+
+    private fun startTrack(name: String) {
+        players[name]?.let {
+            val v = volumes[name] ?: 0.65f
+            it.setVolume(v, v)
             return
         }
-        val v=volumes[name]?:0.65f
-        val stream=pool.play(ids[name]?:return,v,v,1,-1,1f)
-        if(stream!=0) streams[name]=stream
-    }
-    private fun stop(name:String) { streams.remove(name)?.let { pool.stop(it) } }
-    private fun fadeOutAndStop() {
-        val active=streams.toMap()
-        val handler=Handler(Looper.getMainLooper())
-        for(step in 10 downTo 0) handler.postDelayed({
-            val f=step/10f
-            active.forEach { (name,stream) ->
-                val v=(volumes[name]?:0.65f)*f; pool.setVolume(stream,v,v)
+        if (pending[name] != true) return
+        executor.execute {
+            try {
+                val file = File(filesDir, "$name.wav")
+                if (!file.exists() || file.length() < 1024L) download(urls.getValue(name), file)
+                handler.post {
+                    if (pending[name] != true || players.containsKey(name)) return@post
+                    try {
+                        val player = MediaPlayer()
+                        player.setAudioAttributes(AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
+                        player.setDataSource(file.absolutePath)
+                        player.isLooping = true
+                        player.setOnPreparedListener {
+                            val v = volumes[name] ?: 0.65f
+                            it.setVolume(v, v)
+                            it.start()
+                            updateNotification()
+                        }
+                        player.setOnErrorListener { mp, _, _ ->
+                            players.remove(name)
+                            mp.release()
+                            updateNotification()
+                            true
+                        }
+                        players[name] = player
+                        player.prepareAsync()
+                    } catch (_: Exception) {
+                        players.remove(name)
+                        updateNotification()
+                    }
+                }
+            } catch (_: Exception) {
+                handler.post {
+                    pending[name] = false
+                    updateNotification("تعذر تنزيل التسجيل — تحقق من الإنترنت")
+                }
             }
-            if(step==0) { names.forEach { pending[it]=false; stop(it) }; stopSelf() }
-        },(10-step)*250L)
+        }
     }
+
+    private fun download(link: String, destination: File) {
+        val temp = File(filesDir, destination.name + ".part")
+        val connection = URL(link).openConnection() as HttpURLConnection
+        connection.connectTimeout = 25000
+        connection.readTimeout = 120000
+        connection.instanceFollowRedirects = true
+        try {
+            connection.connect()
+            if (connection.responseCode !in 200..299) throw Exception("HTTP error")
+            connection.inputStream.use { input ->
+                temp.outputStream().use { output -> input.copyTo(output) }
+            }
+            if (temp.length() < 1024L) throw Exception("Invalid audio")
+            if (destination.exists()) destination.delete()
+            if (!temp.renameTo(destination)) throw Exception("Cannot save audio")
+        } finally {
+            connection.disconnect()
+            if (temp.exists()) temp.delete()
+        }
+    }
+
+    private fun stopTrack(name: String) {
+        players.remove(name)?.let { player ->
+            try { if (player.isPlaying) player.stop() } catch (_: Exception) {}
+            player.release()
+        }
+    }
+
+    private fun setTimer(minutes: Int) {
+        stopTimer()
+        if (minutes <= 0) return
+        val endAt = System.currentTimeMillis() + minutes * 60_000L
+        timerRunnable = object : Runnable {
+            override fun run() {
+                val left = endAt - System.currentTimeMillis()
+                if (left <= 0L) {
+                    fadeOutAndStop()
+                    return
+                }
+                if (left <= 30_000L) {
+                    val factor = (left / 30_000f).coerceIn(0f, 1f)
+                    players.forEach { (name, player) ->
+                        val v = (volumes[name] ?: 0.65f) * factor
+                        try { player.setVolume(v, v) } catch (_: Exception) {}
+                    }
+                }
+                handler.postDelayed(this, 1000L)
+            }
+        }
+        handler.post(timerRunnable!!)
+    }
+
+    private fun fadeOutAndStop() {
+        val active = players.toMap()
+        for (step in 10 downTo 0) {
+            handler.postDelayed({
+                val factor = step / 10f
+                active.forEach { (name, player) ->
+                    val v = (volumes[name] ?: 0.65f) * factor
+                    try { player.setVolume(v, v) } catch (_: Exception) {}
+                }
+                if (step == 0) {
+                    urls.keys.forEach { pending[it] = false; stopTrack(it) }
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelf()
+                }
+            }, (10 - step) * 250L)
+        }
+    }
+
+    private fun stopTimer() {
+        timerRunnable?.let { handler.removeCallbacks(it) }
+        timerRunnable = null
+    }
+
     private fun createChannel() {
-        if(Build.VERSION.SDK_INT>=26) {
-            val channel=NotificationChannel("sleep_audio","تشغيل أصوات النوم",NotificationManager.IMPORTANCE_LOW)
+        if (Build.VERSION.SDK_INT >= 26) {
+            val channel = NotificationChannel("sleep_audio", "تشغيل أصوات النوم", NotificationManager.IMPORTANCE_LOW)
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
     }
-    private fun notification(text:String)=NotificationCompat.Builder(this,"sleep_audio")
+
+    private fun notification(text: String) = NotificationCompat.Builder(this, "sleep_audio")
         .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-        .setContentTitle("Dream Sounds").setContentText(text).setOngoing(true).setPriority(NotificationCompat.PRIORITY_LOW).build()
-    private fun updateNotification() {
-        val count=streams.size
-        val text=if(count==0) "متوقف" else "يعمل الآن: $count أصوات"
-        getSystemService(NotificationManager::class.java).notify(41,notification(text))
+        .setContentTitle("Dream Sounds").setContentText(text)
+        .setOngoing(true).setPriority(NotificationCompat.PRIORITY_LOW).build()
+
+    private fun updateNotification(overrideText: String? = null) {
+        val count = players.size
+        val text = overrideText ?: if (count == 0) "متوقف" else "يعمل الآن: $count تسجيلات طبيعية"
+        getSystemService(NotificationManager::class.java).notify(41, notification(text))
     }
-    override fun onDestroy() { timer?.removeCallbacks(timerRunnable?:Runnable {}); pool.release(); super.onDestroy() }
-    override fun onBind(intent:Intent?)=null
+
+    override fun onDestroy() {
+        stopTimer()
+        players.values.forEach { it.release() }
+        players.clear()
+        executor.shutdownNow()
+        super.onDestroy()
+    }
+
+    override fun onBind(intent: Intent?) = null
 }
