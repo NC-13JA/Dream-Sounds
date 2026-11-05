@@ -21,7 +21,8 @@ class SoundService : Service() {
     private val urls = mapOf(
         "birds" to "https://opengameart.org/sites/default/files/park_ambience_birds.wav",
         "river" to "https://opengameart.org/sites/default/files/park_ambience_river.wav",
-        "wind" to "https://opengameart.org/sites/default/files/park_ambience_wind.wav"
+        "wind" to "https://opengameart.org/sites/default/files/park_ambience_wind.wav",
+        "ocean" to "https://opengameart.org/sites/default/files/wave_01_cc0-18363__jasinski__alkaibeach.flac"
     )
 
     override fun onCreate() {
@@ -61,7 +62,8 @@ class SoundService : Service() {
         if (pending[name] != true) return
         executor.execute {
             try {
-                val file = File(filesDir, "$name.wav")
+                val extension = if (name == "ocean") "flac" else "wav"
+                val file = File(filesDir, "$name.$extension")
                 if (!file.exists() || file.length() < 1024L) download(urls.getValue(name), file)
                 handler.post {
                     if (pending[name] != true || players.containsKey(name)) return@post
