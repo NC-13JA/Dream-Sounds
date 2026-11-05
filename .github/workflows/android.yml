@@ -23,43 +23,67 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Generate offline ambience WAV files
+      - name: Generate 24 offline ambience WAV files
         run: |
           python3 - <<'PY'
           import math, os, random, struct, wave
           root = "app/src/main/assets/sounds"
           os.makedirs(root, exist_ok=True)
-          names = ["rain", "campfire", "birds", "wind", "ocean", "white_noise"]
-          rate, seconds = 22050, 10
+          names = [
+              "rain","heavy_rain","thunder","campfire","birds","crickets","owl","forest",
+              "wind","leaves","ocean","river","waterfall","underwater",
+              "white_noise","pink_noise","brown_noise","fan","air_conditioner",
+              "train","airplane","cafe","heartbeat","singing_bowl"
+          ]
+          rate, seconds = 22050, 12
           for idx, name in enumerate(names):
-              path = os.path.join(root, name + ".wav")
-              random.seed(1234567 + idx * 7919)
-              previous = 0.0
-              with wave.open(path, "wb") as out:
-                  out.setnchannels(1)
-                  out.setsampwidth(2)
-                  out.setframerate(rate)
-                  frames = bytearray()
-                  for i in range(rate * seconds):
-                      t = i / rate
-                      noise = random.uniform(-1.0, 1.0)
-                      if idx == 0:
-                          shaped = noise * 0.22 + previous * 0.45
-                      elif idx == 1:
-                          shaped = noise * (0.10 + 0.12 * abs(math.sin(t * 1.7)))
-                      elif idx == 2:
-                          shaped = math.sin(t * 900) * 0.12 if i % (rate * 2) < 1800 else noise * 0.015
-                      elif idx == 3:
-                          shaped = noise * (0.10 + 0.08 * math.sin(t * 0.25))
-                      elif idx == 4:
-                          shaped = noise * (0.08 + 0.12 * (0.5 + 0.5 * math.sin(t * 0.6))) + math.sin(t * 0.4) * 0.04
-                      else:
-                          shaped = noise * 0.16
-                      previous = shaped
-                      fade = min(1.0, (i + 1) / 500.0, (rate * seconds - i) / 500.0)
-                      sample = max(-32768, min(32767, int(shaped * fade * 12000)))
-                      frames += struct.pack("<h", sample)
-                  out.writeframes(frames)
+              random.seed(20261105 + idx * 7919)
+              prev = 0.0
+              frames = bytearray()
+              for i in range(rate * seconds):
+                  t = i / rate
+                  n = random.uniform(-1.0, 1.0)
+                  pulse = 0.5 + 0.5 * math.sin(2 * math.pi * (0.12 + (idx % 4) * 0.035) * t)
+                  if name in ("rain","heavy_rain","river","waterfall","ocean"):
+                      shaped = n * (0.12 if name == "rain" else 0.22) + prev * (0.62 if name in ("rain","river") else 0.28)
+                      if name == "ocean": shaped *= 0.35 + pulse * 0.65
+                      if name == "waterfall": shaped *= 0.8 + 0.2 * math.sin(t * 0.7)
+                  elif name == "thunder":
+                      rumble = math.sin(2*math.pi*(38 + 7*math.sin(t*.4))*t) * (0.2 + 0.8*math.exp(-((t%5)-1.2)**2/0.8))
+                      shaped = n*0.10 + rumble*0.55
+                  elif name == "campfire":
+                      crackle = n * (0.06 + (0.35 if random.random() > 0.997 else 0.0))
+                      shaped = crackle + prev*0.12
+                  elif name in ("birds","owl","crickets","singing_bowl"):
+                      base = {"birds":880,"owl":260,"crickets":3300,"singing_bowl":440}[name]
+                      mod = math.sin(2*math.pi*(0.15 if name=="singing_bowl" else 2.1)*t)
+                      tone = math.sin(2*math.pi*(base + mod*base*.08)*t)
+                      gate = (0.5+0.5*math.sin(t*(1.7 if name=="birds" else .7))) if name!="crickets" else (0.5+0.5*math.sin(t*8))
+                      shaped = tone * (0.025 if name=="crickets" else 0.08) * gate + n*0.012
+                  elif name in ("wind","leaves","forest","underwater","pink_noise","brown_noise","white_noise"):
+                      shaped = n * (0.08 if name=="white_noise" else 0.055)
+                      if name in ("wind","forest","leaves"): shaped = shaped * (0.25 + pulse*.75) + prev*.25
+                      if name=="brown_noise": shaped = (prev*.96 + n*.035)
+                      if name=="pink_noise": shaped = n*.045 + prev*.45
+                      if name=="underwater": shaped = shaped*.45 + math.sin(t*22)*.025
+                  elif name in ("fan","air_conditioner","airplane","train","cafe"):
+                      freq={"fan":65,"air_conditioner":90,"airplane":75,"train":48,"cafe":180}[name]
+                      shaped = n*.035 + math.sin(2*math.pi*freq*t)*.045 + math.sin(2*math.pi*(freq*1.5)*t)*.015
+                      if name=="train": shaped *= .7 + .3*pulse
+                      if name=="cafe": shaped += n*.025
+                  elif name=="heartbeat":
+                      phase=t%1.05
+                      beat=math.exp(-((phase-.08)/.035)**2)+.65*math.exp(-((phase-.22)/.05)**2)
+                      shaped=math.sin(2*math.pi*58*t)*beat*.28+n*.008
+                  else:
+                      shaped=n*.05
+                  prev=shaped
+                  fade=min(1.0,(i+1)/700.0,(rate*seconds-i)/700.0)
+                  sample=max(-32768,min(32767,int(shaped*fade*14000)))
+                  frames += struct.pack("<h",sample)
+              path=os.path.join(root,name+".wav")
+              with wave.open(path,"wb") as out:
+                  out.setnchannels(1); out.setsampwidth(2); out.setframerate(rate); out.writeframes(frames)
           PY
       - name: Build debug APK
         run: gradle --no-daemon assembleDebug
