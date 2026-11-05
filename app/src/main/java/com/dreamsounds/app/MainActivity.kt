@@ -15,28 +15,14 @@ import java.util.Calendar
 
 class MainActivity : Activity() {
     private val prefs by lazy { getSharedPreferences("dream_sounds", MODE_PRIVATE) }
-    private val soundNames = listOf(
-        "rain","heavy_rain","thunder","campfire","birds","crickets","owl","forest",
-        "wind","leaves","ocean","river","waterfall","underwater",
-        "white_noise","pink_noise","brown_noise","fan","air_conditioner",
-        "train","airplane","cafe","heartbeat","singing_bowl"
-    )
+    private val soundNames = listOf("birds", "river", "wind")
     private val labels = mapOf(
-        "rain" to "مطر هادئ 🌧️","heavy_rain" to "مطر غزير 🌧️","thunder" to "رعد وعواصف ⛈️",
-        "campfire" to "نار المخيم 🔥","birds" to "زقزقة الطيور 🐦","crickets" to "صراصير الليل 🦗",
-        "owl" to "بومة الليل 🦉","forest" to "أجواء الغابة 🌲","wind" to "نسيم الرياح 🍃",
-        "leaves" to "حفيف أوراق الشجر 🍂","ocean" to "أمواج البحر 🌊","river" to "جدول ماء 🏞️",
-        "waterfall" to "شلال 💧","underwater" to "أعماق البحر 🫧","white_noise" to "ضوضاء بيضاء",
-        "pink_noise" to "ضوضاء وردية","brown_noise" to "ضوضاء بنية","fan" to "مروحة كهربائية",
-        "air_conditioner" to "مكيف الهواء ❄️","train" to "قطار بعيد 🚆","airplane" to "طائرة في الجو ✈️",
-        "cafe" to "ضجيج مقهى هادئ ☕","heartbeat" to "نبضات قلب ❤️","singing_bowl" to "وعاء تأمل 🔔"
+        "birds" to "طيور الحديقة 🐦",
+        "river" to "النهر والضفادع 🐸",
+        "wind" to "رياح الحقول 🍃"
     )
     private val groups = linkedMapOf(
-        "🌧️ الطبيعة والطقس" to listOf("rain","heavy_rain","thunder","wind","leaves"),
-        "🌲 الغابة والحياة البرية" to listOf("campfire","birds","crickets","owl","forest"),
-        "🌊 الماء والبحر" to listOf("ocean","river","waterfall","underwater"),
-        "🌙 أصوات تساعد على النوم" to listOf("white_noise","pink_noise","brown_noise","fan","air_conditioner"),
-        "🚆 أجواء وأصوات أخرى" to listOf("train","airplane","cafe","heartbeat","singing_bowl")
+        "🌿 تسجيلات الطبيعة الحقيقية" to listOf("birds", "river", "wind")
     )
     private val active = mutableMapOf<String, Boolean>()
     private val volumes = mutableMapOf<String, Float>()
@@ -63,7 +49,7 @@ class MainActivity : Activity() {
             setPadding(0,2,0,10)
         })
         status = TextView(this).apply {
-            text=active.values.count { it }.let { if(it==0) "24 صوتاً متاحاً دون إنترنت" else "يعمل الآن $it أصوات" }
+            text=active.values.count { it }.let { if(it==0) "3 تسجيلات طبيعية حقيقية" else "يعمل الآن $it أصوات" }
             textSize=14f; setTextColor(accent); gravity=Gravity.CENTER
             background=rounded(0xFF17264A.toInt(),18); setPadding(12,12,12,12)
         }
@@ -155,7 +141,7 @@ class MainActivity : Activity() {
     }
     private fun refreshStatus() {
         val count=active.values.count { it }
-        status.text=if(count==0) "24 صوتاً متاحاً دون إنترنت" else "يعمل الآن $count أصوات"
+        status.text=if(count==0) "3 تسجيلات طبيعية حقيقية" else "يعمل الآن $count أصوات"
     }
     private fun savePreset() {
         val json=JSONObject()
