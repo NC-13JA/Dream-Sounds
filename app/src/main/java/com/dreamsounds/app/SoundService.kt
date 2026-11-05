@@ -13,6 +13,7 @@ import java.util.concurrent.Executors
 
 class SoundService : Service() {
     private val players = mutableMapOf<String, MediaPlayer>()
+    private val downloading = mutableSetOf<String>()
     private val volumes = mutableMapOf<String, Float>()
     private val pending = mutableMapOf<String, Boolean>()
     private val executor = Executors.newFixedThreadPool(3)
@@ -61,7 +62,8 @@ class SoundService : Service() {
             it.setVolume(v, v)
             return
         }
-        if (pending[name] != true) return
+        if (pending[name] != true || name in downloading) return
+        downloading.add(name)
         updateNotification("يتم تجهيز التسجيل الصوتي...")
         executor.execute {
             try {
@@ -69,6 +71,7 @@ class SoundService : Service() {
                 val file = File(filesDir, "$name.$extension")
                 if (!file.exists() || file.length() < 1024L) download(urls.getValue(name), file)
                 handler.post {
+                    downloading.remove(name)
                     if (pending[name] != true || players.containsKey(name)) return@post
                     try {
                         val player = MediaPlayer()
@@ -78,6 +81,11 @@ class SoundService : Service() {
                         player.setDataSource(file.absolutePath)
                         player.isLooping = true
                         player.setOnPreparedListener {
+                            if (pending[name] != true) {
+                                players.remove(name)
+                                it.release()
+                                return@setOnPreparedListener
+                            }
                             val v = volumes[name] ?: 0.65f
                             it.setVolume(v, v)
                             it.start()
@@ -98,6 +106,7 @@ class SoundService : Service() {
                 }
             } catch (_: Exception) {
                 handler.post {
+                    downloading.remove(name)
                     pending[name] = false
                     updateNotification("تعذر تنزيل التسجيل — تحقق من الإنترنت")
                 }
